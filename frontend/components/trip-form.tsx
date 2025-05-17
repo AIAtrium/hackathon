@@ -11,6 +11,23 @@ import { MessageSquare } from "lucide-react";
 import { WHATSAPP_GROUPS, WhatsAppGroupDialog } from "./whatsapp-group-dialog";
 import { useGeneration } from "@/context/generation-context";
 
+function extractSummaryJson(result: string) {
+  // Find the first { after "title"
+  const idx = result.indexOf('{"title"');
+  if (idx === -1) return null;
+  // Try to parse the JSON object
+  try {
+    // Sometimes there may be multiple JSONs, just take the first one
+    const jsonStr = result.slice(idx);
+    // Find the closing } of the first JSON object
+    const endIdx = jsonStr.indexOf("}") + 1;
+    const firstJson = jsonStr.slice(0, endIdx);
+    return JSON.parse(firstJson);
+  } catch (e) {
+    return null;
+  }
+}
+
 export function TripForm() {
   const {
     isGenerating,
@@ -22,24 +39,62 @@ export function TripForm() {
   const [whatsappContext, setWhatsappContext] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tripTitle, setTripTitle] = useState("");
+  const [requirements, setRequirements] = useState("");
+  const [names, setNames] = useState<string[]>([]);
+  const [destination, setDestination] = useState("");
+  const [duration, setDuration] = useState("");
+  const [dates, setDates] = useState("");
+  const [budget, setBudget] = useState("");
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
 
   const handleConnectWhatsapp = () => {
     setDialogOpen(true);
   };
 
-  const handleGroupSelect = (groupId: string) => {
+  const handleGroupSelect = async (groupId: string) => {
     const group = WHATSAPP_GROUPS.find((g) => g.id === groupId);
     setSelectedGroup(groupId);
-
-    // Close dialog and update connected state
     setDialogOpen(false);
     setWhatsappConnected(true);
 
-    // Set some example context based on the selected group
     if (group) {
-      setWhatsappContext(
-        `Connected to "${group.name}" WhatsApp group.\n\nExample messages would appear here after connecting to the actual WhatsApp API. This would include recent messages, participants, and other relevant information from the group chat.`
-      );
+      setWhatsappLoading(true);
+      try {
+        const res = await fetch(
+          `http://localhost:8000/chat-history?chat_name=${encodeURIComponent(
+            group.name
+          )}&whatsapp_user_name=Dan`
+        );
+        const data = await res.json();
+        console.log("WhatsApp API response:", data);
+        if (data?.result) {
+          const summary = extractSummaryJson(data.result);
+          console.log("Parsed summary:", summary);
+          if (summary) {
+            setTripTitle(summary.title || "");
+            setRequirements(summary.requirements || "");
+            setNames(summary.names || []);
+            setDestination(summary.destination || "");
+            setDuration(summary.duration || "");
+            setDates(summary.dates || "");
+            setBudget(summary.budget || "");
+            setWhatsappContext("Summary loaded from WhatsApp group.");
+          } else {
+            setWhatsappContext("Could not parse summary.");
+          }
+        } else {
+          setWhatsappContext(
+            `Connected to "${group.name}" WhatsApp group.\n\nNo summary available.`
+          );
+        }
+      } catch (err) {
+        setWhatsappContext(
+          `Connected to "${group.name}" WhatsApp group.\n\nFailed to fetch summary.`
+        );
+      } finally {
+        setWhatsappLoading(false);
+      }
     }
   };
 
@@ -61,7 +116,12 @@ export function TripForm() {
                 <label htmlFor="trip-name" className="text-sm font-medium">
                   Name of the Trip
                 </label>
-                <Input id="trip-name" placeholder="e.g., Summer in Spain" />
+                <Input
+                  id="trip-name"
+                  placeholder="e.g., Summer in Spain"
+                  value={tripTitle}
+                  onChange={(e) => setTripTitle(e.target.value)}
+                />
               </div>
 
               {!isGenerating && <div></div>}
@@ -118,6 +178,8 @@ export function TripForm() {
                   id="trip-requirements"
                   placeholder="Describe your trip requirements, preferences, and any specific steps you want to include..."
                   rows={6}
+                  value={requirements}
+                  onChange={(e) => setRequirements(e.target.value)}
                 />
               </div>
 
@@ -135,13 +197,23 @@ export function TripForm() {
                         className="text-sm font-medium">
                         Destination
                       </label>
-                      <Input id="destination" placeholder="e.g., Spain" />
+                      <Input
+                        id="destination"
+                        placeholder="e.g., Spain"
+                        value={destination}
+                        onChange={(e) => setDestination(e.target.value)}
+                      />
                     </div>
                     <div className="space-y-2">
                       <label htmlFor="duration" className="text-sm font-medium">
                         Duration
                       </label>
-                      <Input id="duration" placeholder="e.g., 7 days" />
+                      <Input
+                        id="duration"
+                        placeholder="e.g., 7 days"
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -151,6 +223,8 @@ export function TripForm() {
                     <Input
                       id="dates"
                       placeholder="e.g., Jun 15 - Jun 22, 2025"
+                      value={dates}
+                      onChange={(e) => setDates(e.target.value)}
                     />
                   </div>
                 </TabsContent>
@@ -188,7 +262,12 @@ export function TripForm() {
                       className="text-sm font-medium">
                       Total Budget
                     </label>
-                    <Input id="total-budget" placeholder="e.g., $5000" />
+                    <Input
+                      id="total-budget"
+                      placeholder="e.g., $5000"
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <label
