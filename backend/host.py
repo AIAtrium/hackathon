@@ -7,11 +7,13 @@ from mcp.types import TextResourceContents, BlobResourceContents, Tool
 from mcp_client import MCPClient
 from whatsapp_client import WhatsappMCPClient
 from exa_client import ExaMCPClient
+from airbnb_client import AirbnbMCPClient
 
 
 ENABLED_CLIENTS = [
     "Whatsapp",
     "Exa",
+    "Airbnb"
 ]
 
 
@@ -26,6 +28,7 @@ class MCPHost:
         self._all_clients = {
             "Whatsapp": WhatsappMCPClient(),
             "Exa": ExaMCPClient(),
+            "Airbnb": AirbnbMCPClient(),
         }
 
         # Use either user-specified clients or all clients by default
@@ -42,6 +45,7 @@ class MCPHost:
         self.mcp_client_paths = {
             "Whatsapp": os.getenv("WHATSAPP_MCP_SERVER_PATH"),
             "Exa": os.getenv("EXA_MCP_SERVER_PATH"),
+            "Airbnb": os.getenv("AIRBNB_MCP_SERVER_PATH"),
         }
         self.mcp_client_paths = {
             name: path
@@ -210,7 +214,7 @@ class MCPHost:
         if state is not None and "tool_results" in state:
             state["tool_results"].update(tool_results_context)
 
-        return "\n".join(final_text)
+        return final_text
 
     @observe(as_type="generation")
     async def _create_claude_message(
