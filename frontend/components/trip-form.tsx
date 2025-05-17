@@ -11,21 +11,22 @@ import { MessageSquare } from "lucide-react";
 import { WHATSAPP_GROUPS, WhatsAppGroupDialog } from "./whatsapp-group-dialog";
 import { useGeneration } from "@/context/generation-context";
 
-function extractSummaryJson(result: string) {
-  // Find the first { after "title"
-  const idx = result.indexOf('{"title"');
-  if (idx === -1) return null;
-  // Try to parse the JSON object
-  try {
-    // Sometimes there may be multiple JSONs, just take the first one
-    const jsonStr = result.slice(idx);
-    // Find the closing } of the first JSON object
-    const endIdx = jsonStr.indexOf("}") + 1;
-    const firstJson = jsonStr.slice(0, endIdx);
-    return JSON.parse(firstJson);
-  } catch (e) {
-    return null;
-  }
+function extractSummaryJsonsFromArray(resultArr: string[]) {
+  // Find all items that look like JSON objects
+  const jsons = resultArr
+    .map((str) => {
+      try {
+        // Only parse if it looks like a JSON object
+        if (str.trim().startsWith("{") && str.trim().endsWith("}")) {
+          return JSON.parse(str);
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+      return null;
+    })
+    .filter(Boolean);
+  return jsons;
 }
 
 export function TripForm() {
@@ -47,6 +48,8 @@ export function TripForm() {
   const [dates, setDates] = useState("");
   const [budget, setBudget] = useState("");
   const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [hasSummary, setHasSummary] = useState(false);
+  const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
 
   const handleConnectWhatsapp = () => {
     setDialogOpen(true);
@@ -61,17 +64,19 @@ export function TripForm() {
     if (group) {
       setWhatsappLoading(true);
       try {
-        const res = await fetch(
-          `http://localhost:8000/chat-history?chat_name=${encodeURIComponent(
-            group.name
-          )}&whatsapp_user_name=Dan`
-        );
+        const url = `http://localhost:8000/chat-history?chat_name=${encodeURIComponent(
+          group.name
+        )}&whatsapp_user_name=Dan`;
+        console.log("WhatsApp API request:", url);
+
+        const res = await fetch(url);
         const data = await res.json();
         console.log("WhatsApp API response:", data);
-        if (data?.result) {
-          const summary = extractSummaryJson(data.result);
-          console.log("Parsed summary:", summary);
-          if (summary) {
+        if (data?.result && Array.isArray(data.result)) {
+          const summaries = extractSummaryJsonsFromArray(data.result);
+          console.log("Parsed summaries:", summaries);
+          if (summaries.length > 0) {
+            const summary = summaries[0];
             setTripTitle(summary.title || "");
             setRequirements(summary.requirements || "");
             setNames(summary.names || []);
@@ -80,8 +85,10 @@ export function TripForm() {
             setDates(summary.dates || "");
             setBudget(summary.budget || "");
             setWhatsappContext("Summary loaded from WhatsApp group.");
+            setHasSummary(true);
           } else {
             setWhatsappContext("Could not parse summary.");
+            setHasSummary(false);
           }
         } else {
           setWhatsappContext(
@@ -109,8 +116,29 @@ export function TripForm() {
         <CardHeader>
           <CardTitle>Trip Details</CardTitle>
         </CardHeader>
+        <div className="mb-4">
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                onClick={handleConnectWhatsapp}
+                className="w-full bg-primary hover:bg-primary/90">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                {whatsappConnected
+                  ? `Connected to ${
+                      WHATSAPP_GROUPS.find((g) => g.id === selectedGroup)?.name
+                    }`
+                  : "Connect to WhatsApp Group"}
+              </Button>
+            </DialogTrigger>
+            <WhatsAppGroupDialog
+              selectedGroup={selectedGroup}
+              onGroupSelect={handleGroupSelect}
+            />
+          </Dialog>
+        </div>
         <CardContent>
-          {!isGenerating ? (
+          {hasSummary && (
             <form className="space-y-4" onSubmit={handleGeneratePlan}>
               <div className="space-y-2">
                 <label htmlFor="trip-name" className="text-sm font-medium">
@@ -126,32 +154,6 @@ export function TripForm() {
 
               {!isGenerating && <div></div>}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  WhatsApp Group Chat
-                </label>
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      type="button"
-                      onClick={handleConnectWhatsapp}
-                      className="w-full bg-primary hover:bg-primary/90">
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      {whatsappConnected
-                        ? `Connected to ${
-                            WHATSAPP_GROUPS.find((g) => g.id === selectedGroup)
-                              ?.name
-                          }`
-                        : "Connect to WhatsApp Group"}
-                    </Button>
-                  </DialogTrigger>
-                  <WhatsAppGroupDialog
-                    selectedGroup={selectedGroup}
-                    onGroupSelect={handleGroupSelect}
-                  />
-                </Dialog>
-              </div>
-
               {whatsappConnected && (
                 <div className="space-y-2">
                   <label
@@ -159,12 +161,35 @@ export function TripForm() {
                     className="text-sm font-medium">
                     WhatsApp Context
                   </label>
-                  <Textarea
-                    id="whatsapp-context"
-                    value={whatsappContext}
-                    onChange={(e) => setWhatsappContext(e.target.value)}
-                    rows={4}
-                  />
+                  {whatsappLoading ? (
+                    <div className="flex items-center space-x-2 py-2">
+                      <svg
+                        className="animate-spin h-5 w-5 text-primary"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24">
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v8z"></path>
+                      </svg>
+                      <span>Loading WhatsApp summary…</span>
+                    </div>
+                  ) : (
+                    <Textarea
+                      id="whatsapp-context"
+                      value={whatsappContext}
+                      onChange={(e) => setWhatsappContext(e.target.value)}
+                      rows={4}
+                    />
+                  )}
                 </div>
               )}
 
@@ -290,13 +315,6 @@ export function TripForm() {
                 Generate Trip Plan
               </Button>
             </form>
-          ) : (
-            <div className="px-6 pb-6">
-              <div className="w-full bg-muted rounded-full h-2.5"></div>
-              <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                <span>Processing trip data</span>
-              </div>
-            </div>
           )}
         </CardContent>
       </Card>

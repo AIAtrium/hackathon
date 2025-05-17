@@ -15,6 +15,7 @@ export const WHATSAPP_GROUPS = [
   { id: "sf-trip-crew", name: "SF Trip Crew" },
   { id: "family", name: "Family" },
   { id: "founders", name: "Founders" },
+  { id: "summer-trip-sf-crew", name: "Summer Trip - SF Crew" },
 ];
 
 interface WhatsAppGroupDialogProps {
