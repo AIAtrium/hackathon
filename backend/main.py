@@ -3,8 +3,15 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from host import MCPHost, ENABLED_CLIENTS
 from dotenv import load_dotenv
+from models import TripInfo
 
 load_dotenv()
+
+SYSTEM_PROMPT = """
+    You are a travel agent.
+    You are given a chat history of a group chat of friends who are planning a trip together.
+    Your job is to perform tasks that help them plan the trip.
+    """
 
 mcp_host = MCPHost(enabled_clients=ENABLED_CLIENTS)
 
@@ -25,12 +32,6 @@ async def start():
 
 @app.get("/chat-history")
 async def summarize_group_chat(chat_name: str, whatsapp_user_name: str):
-    system_prompt = """
-    You are a travel agent.
-    You are given a chat history of a group chat of friends who are planning a trip together.
-    Your job is to perform tasks that help them plan the trip.
-    """
-
     input_action = f"""
     Summarize the chat history for the group chat: {chat_name}
 
@@ -60,7 +61,7 @@ async def summarize_group_chat(chat_name: str, whatsapp_user_name: str):
     client_list = ["Whatsapp"]
     result = await mcp_host.process_input_with_agent_loop(
         input_action=input_action,
-        system_prompt=system_prompt,
+        system_prompt=SYSTEM_PROMPT,
         client_list=client_list,
         langfuse_session_id=f"chat-history-{chat_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     )
@@ -72,6 +73,47 @@ async def summarize_group_chat(chat_name: str, whatsapp_user_name: str):
         )
     else:
         return JSONResponse(status_code=500, content={"status": "error"})
+
+@app.post("/airbnb")
+async def airbnb(trip_info: TripInfo):
+    input_action = f"""
+    You are given a list of requirements for a group of friends planning a trip together.
+    Based on the requirements, you need to find a place to stay for the trip.
+    You have access to tools from Airbnb that you can use to search.
+    Use the tools to return listings that match their criteria
+
+    Return the results in a JSON serializable object with the following fields:
+    listings: [
+        {{
+            "name": str,
+            "description": str,
+            "price": str,
+            "url": str
+        }}
+    ]
+
+    return NOTHING other than the JSON object.
+
+    ### Requirements
+    {trip_info}
+    """
+
+    client_list = ["Airbnb"]
+    result = await mcp_host.process_input_with_agent_loop(
+        input_action=input_action,
+        system_prompt=SYSTEM_PROMPT,
+        client_list=client_list,
+        langfuse_session_id=f"airbnb-{trip_info.title}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+    )
+
+    if result:
+        return JSONResponse(
+            status_code=200,
+            content={"status": "success", "result": result}
+        )
+    else:
+        return JSONResponse(status_code=500, content={"status": "error"})
+
 
 if __name__ == "__main__":
     import uvicorn
