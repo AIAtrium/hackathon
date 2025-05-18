@@ -48,7 +48,7 @@ async def summarize_group_chat(chat_name: str, whatsapp_user_name: str):
 
     Please return your summary as a JSON serializable object with the following fields:
     'title': str, the name of the trip
-    'requirements': str, the background context of the trip described in the chat. what is the purpose of the trip, where do they want to go, what are they looking to do
+    'requirements': str, the background context of the trip described in the chat. what is the purpose of the trip, where do they want to go, what are they looking to do. If there is information about each persons individual preferences, make sure to include that.
     'names': list[str], the names of the people in the chat, make sure to include also the person whose whatsapp you are searching, {whatsapp_user_name}
     'destination': str, optional, only fill it in if the group is in agreement on a destination, if no information use 'No information'
     'duration': str, optional, only fill it in if the group is in agreement on a duration, if no information use 'No information'
@@ -113,7 +113,47 @@ async def airbnb(trip_info: TripInfo):
         )
     else:
         return JSONResponse(status_code=500, content={"status": "error"})
+    
+@app.post("/activities")
+async def activities(trip_info: TripInfo):
+    input_action = f"""
+    You are given a list of requirements for a group of friends planning a trip together.
+    Based on the requirements, you need to find activities for the trip.
+    You have access to tools from Exa that you can use to search.
+    Use the tools to return activities that match their criteria
 
+    If possible, attempt to return a list of at least 10 activities.
+
+    Return the results in a JSON serializable object with the following fields:
+    activities: [
+        {{
+            "name": str,
+            "description": str,
+            "url": str
+        }}
+    ]
+
+    return NOTHING other than the JSON object.
+
+    ### Requirements
+    {trip_info}
+    """
+
+    client_list = ["Exa"]
+    result = await mcp_host.process_input_with_agent_loop(
+        input_action=input_action,
+        system_prompt=SYSTEM_PROMPT,
+        client_list=client_list,
+        langfuse_session_id=f"activities-{trip_info.title}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+    )
+
+    if result:
+        return JSONResponse(
+            status_code=200,
+            content={"status": "success", "result": result}
+        )
+    else:
+        return JSONResponse(status_code=500, content={"status": "error"})
 
 if __name__ == "__main__":
     import uvicorn
